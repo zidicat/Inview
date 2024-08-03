@@ -1,0 +1,352 @@
+* Inview
+
+A library inspired by [[https://github.com/cgrand/enlive][Enlive]] and [[https://github.com/ckirkendall/enfocus][Enfocus]] with fewer macros and based around Hiccup style data structures. It's intended to be usable from Clojure and ClojureScript.
+
+** Quick start
+Given an HTML file ~test.html~:
+#+begin_src html
+  <!DOCTYPE html [<!ENTITY copy "&#169;"> ]>
+  <html>
+    <head>
+      <title>Title</title>
+    </head>
+    <body>
+      <div class="header">
+        <h1>Title</h1>
+        <div class="nav">
+          <ol>
+            <li><a class="home">Home</a></li>
+          </ol>
+        </div>
+      </div>
+      <div class="main">
+        <div class="content" />
+      </div>
+      <div class="footer">
+        <p>&copy; 2001 A Space Oddessy</p>
+      </div>
+    </body>
+  </html>
+#+end_src
+
+You can define a function that will return a hiccup style data structure representing that HTML:
+#+name: Initial Setup
+#+begin_src clojure -r -t :results silent
+  (ns my.ns
+    (:require [com.zidicat.inview :as html]))
+
+  (html/def-view page []                                                                      (ref:macro-example)
+    ["test.html"]
+    [:head :title] (html/content "TITLE!"))
+
+  (page)
+  ;; =>
+  [:html {}
+   [:head {} [:title {} "TITLE!"]]
+   [:body {}
+    [:div {:class "header"} [:h1 {} "Title"] [:div {:class "nav"} [:ol {} [:li {} [:a {:class "home"} "Home"]]]]]
+    [:div {:class "main"} [:div {:class "content"}]]
+    [:div {:class "footer"} [:p {} "© 2001 A Space Oddessy"]]]]
+#+end_src
+
+The ~html/def-view~ macro will parse the HTML file, apply the provided transformations and return the resulting hiccup. The macro can be used to inline the source, so the function doesn't need to re-parse the HTML every time it's executed. This is the default behaviour in ClojureScript, but in Clojure the template is loaded every time the function is called. This is configurable on a per-template basis, see [[*Inline template][Inline template]].
+
+** Macro-free API
+The def-view macro loads the contents of the HTML template into the function definition. This means that the HTML templates will not have to be available after an AOT or ClojureScript compilation step. However, there is also a macro-free API that can also be used.
+#+name: Macro-free Dynamic API
+#+begin_src clojure -t -r
+  (defn page []                                                                          (ref:macro-free-example)
+    (html/transform (html/load-source {:file "test.html"})
+                    [:head] (html/content "TITLE!")))
+
+  (page)
+  ;; =>
+  [:html {}
+   [:head {} "TITLE!"]
+   [:body {}
+    [:div {:class "header"} [:h1 {} "Title"] [:div {:class "nav"} [:ol {} [:li {} [:a {:class "home"} "Home"]]]]]
+    [:div {:class "main"} [:div {:class "content"}]]
+    [:div {:class "footer"} [:p {} "© 2001 A Space Oddessy"]]]]
+#+end_src
+
+With this just being functions, any thing that ~eval~'s to Hiccup can be used as the first argument to ~html/transform~, including literal Hiccup.
+#+name: Literal Hiccup
+#+begin_src clojure -t
+  (html/transform [:div {:class "content"}]
+                  [:.content] (html/content "CONTENT!"))
+  ;; =>
+  [:div {:class "content"} "CONTENT!"]
+#+end_src
+
+** Templates
+A template is a combination of a parsed hiccup data structure and a collection of selectors. Transformations can be applied to a template to produce desired HTML. Strictly speaking the [[(macro-example)][macro example]] and the [[(macro-free-example)][macro free example]] behave differently. The macro example is actually equivalent to the code below, which generates a template and then applies the transformation. The difference is that in the template version, the source hiccup is scanned only once to find elements matching the provided selectors before transformations generate replacement markup. So if it's expected that the replacements will be processed, then the [[(macro-free-example)][dynamic api]] may be preferable.
+#+name: Macro-free Template API
+#+begin_src clojure -t
+  (defn page []
+    (html/transform-template
+     (html/template (html/load-source {:file "test.html"})
+                    [:head])
+     (html/content "TITLE!")))
+
+  (page)
+  ;; =>
+  [:html {}
+   [:head {} "TITLE!"]
+   [:body {}
+    [:div {:class "header"} [:h1 {} "Title"] [:div {:class "nav"} [:ol {} [:li {} [:a {:class "home"} "Home"]]]]]
+    [:div {:class "main"} [:div {:class "content"}]]
+    [:div {:class "footer"} [:p {} "© 2001 A Space Oddessy"]]]]
+#+end_src
+
+*** Selectors
+A selector is a data-structure that represents a query over the HTML in the template. A sub-set of CSS selectors is supported, expressed using Clojure data. A selector is a vector containing clauses. Each clause is a keyword, a map or a vector. If a keyword is used, it can contain an HTML tag, a ~.~ followed by a class name, or a ~#~ followed by an HTML id. Only one of ~.~ and ~#~ are supported in each selector keyword.
+
+If a map is used, it will match the attributes of an HTML element. Each key will match the attribute name and the value can be either a string or a function. If the value is a function, it will be used as a predicate for the value otherwise the string will be compared for equality. You cannot mix the two value types in a single selector map clause.
+
+A vector can be used to represent the cases covered by the previous options. The first element will be an HTML element tag and the second element must be a map that matches the HTML element attributes, as above.
+#+begin_src clojure
+  [:form#login-form]        ; matches <form id="login-form">...</form>
+  [:span.text]              ; matches <span class="text label">...</span>
+  [[:span {:class "text"}]] ; matches <span class="text">... but not the previous example
+  [{:name "username"}]      ; matches <input name="username" />
+#+end_src
+
+Further selector elements are matched in children of the elements matched so far. Immediate parent relationships like ~>~ from CSS are not supported because this feature limits the changes that can be made to the HTML without breaking the templates.
+#+begin_src clojure
+  ;; matches the input element in <form id="login-form"><fieldset><input name="username" />...
+  [:form#login-form [:input {:name "username"}]]
+#+end_src
+
+Once an element is matched, it's children are not searched for further matches. This is because it is assumed that the contents of the matched element will be altered by the transformation.
+*** Transformations
+Transformations are functions of the matched element. They take single argument of the matched Hiccup and return the replacement data-structure. There are functions provided to transform the Hiccup markup.
+
+**** ~html/replace~
+This will completely replace the matched element.
+**** ~html/content~
+This will replace the content of the matched element.
+**** ~html/append~, ~html/prepend~, ~html/delete~
+These will append/prepend the supplied elements before/after the matched element, or delete it. These may not play well with chains of transformations in a pre-constructed template, as created by ~html/def-view~.
+**** ~html/set-attrs~, ~html/remove-attrs~, ~html/update-attr~, ~html/add-class~, ~html/remove-class~
+These can be used to update the attributes of matched elements.
+**** ~html/alter-if~, ~html/has-class?~, ~html/some-attr?~
+These can be used to conditionally apply a transformation. For example:
+#+name: Conditional Transformation
+#+begin_src clojure -t
+  (html/transform [:html {} [:ol {} [:li {:class "task"}]]] 
+   [:li.task] (html/alter-if (html/has-class? "task") (html/content "Things to do today")))
+  #_ => [:html {} [:ol {} [:li {:class "task"} "Things to do today"]]]
+#+end_src
+**** ~html/clone-map~
+This will replicate the matched item similar to Clojure's ~map~. As with ~map~, the function passed to ~html/clone-map~ an arity that matches the number of sequences passed to ~html/clone-map~, but it needs to return a function that takes a single argument (the element to be modified) and returns the updated markup. The transformations can therefore be composed together with the usual ~comp~ as below.
+#+name: Clone Map
+#+begin_src clojure -t
+  (html/transform
+   [:div {:class "nav"} [:span {} [:a {} "Home"]]]
+   [:.nav :a] (html/clone-map #(comp (html/content %1)
+                                     (html/set-attrs :href %2)
+                                     (html/add-class %3))
+                              ["Home" "Link 1" "Link 2" "Link 3"]
+                              ["/home" "/link1" "/link2" "/link3"]
+                              (cycle ["light-background" "dark-background"])))
+  #_ => [:div {:class "nav"}
+          [:span {}
+           [:a {:class "light-background", :href "/home"} "Home"]
+           [:a {:class "dark-background", :href "/link1"} "Link 1"]
+           [:a {:class "light-background", :href "/link2"} "Link 2"]
+           [:a {:class "dark-background", :href "/link3"} "Link 3"]]]
+#+end_src
+**** ~html/subform~
+This can be used to create a transformation that alters selected elements of the matched markup.
+#+name: Subform
+#+begin_src clojure -t
+  (html/transform
+   [:div {:class "nav"} [:ol {} [:li {} [:a {} "Home"]]]]
+   [:.nav :li] (html/clone-map #(comp (html/subform [:a] (html/content %1))
+                                      (html/subform [:a] (html/set-attrs :href %2)))
+                               ["Home" "Link 1" "Link 2" "Link 3"]
+                               ["/home" "/link1" "/link2" "/link3"]))
+  #_ => [:div {:class "nav"}
+         [:ol {}
+          [:li {} [:a {:href "/home"} "Home"]]
+          [:li {} [:a {:href "/link1"} "Link 1"]]
+          [:li {} [:a {:href "/link2"} "Link 2"]]
+          [:li {} [:a {:href "/link3"} "Link 3"]]]]
+#+end_src
+**** ~html/wrap~, ~html/unwrap~
+These can be used to wrap content in a tag, or unwrap the contents of a tag.
+#+name: Wrap and unwrap
+#+begin_src clojure -t
+  (html/transform
+   [:div {:class "nav"} [:ol {} [:li {} [:a {} "Home"]]]]
+   [:a] (html/unwrap))
+  #_ => [:div {:class "nav"}
+         [:ol {}
+          [:li {} "Home"]]]
+#+end_src
+*** Other features of ~def-view~
+**** Local lets
+The macro allows for a let block around the body of the template to do some calculations before rendering the template. For example:
+#+begin_src clojure
+  (html/def-view optional-let []
+    "test.html"
+    (let [user-name "Bob"]
+      [:.user] (html/content user-name)))
+#+end_src
+**** Final function
+It also allows for an optional function to transform the resulting hiccup. This can be used for rendering to HTML, for example:
+#+begin_src clojure
+  (html/def-view optional-let []
+    "test.html"
+    (let [user-name "Bob"]
+      [:.user] (html/content user-name)
+      html/render))
+#+end_src
+**** Clj Kondo config
+You should be able to lint the ~def-view~ macro as ~clojure.core/defn~, especially if you put any string filenames in a vector to avoid the mis-placed docstring warning. There is a config file exported [[file:resources/clj-kondo.exports/com.zidicat/inview/config.edn::{:lint-as {com.zidicat.inview/def-view clojure.core/defn}}][here]].
+
+**** TODO Rendering as more than strings
+This is work in progress.
+
+** Configuring ~load-source~ and ~def-view~
+There is a multimethod that can be used to configure the settings for the content loaded by ~load-source~. Also the ~def-view~ macro can inline the parsed template. The multimethod dispatches on the ~:file~ key which allows for configuration to be on a per file basis. ~clean-settings~ will be called on the source by ~def-view~ to allow the convenience of putting a single string to name a file to parse. Things that can be configured by overriding ~get-settings~ are:
+| Key                   | Type                             | Description                                                                   |
+|-----------------------+----------------------------------+-------------------------------------------------------------------------------|
+| :file                 | String or java.io.File           | File to load.                                                                 |
+| :template-search-path | vector of String or java.io.File | Given a String or java.io.File :file, search these paths. Defaults to ["./"]. |
+| :content              | String, hiccup, java.io.Reader   | Content to parse. Cannot be specified in combination with :file. If hiccup,   |
+|                       | or java.io.InputStream           | set :parser to identity.                                                      |
+| :selector             | selector                         | Select this from the template.                                                |
+| :strip-whitespace     | boolean                          | Trim white-space strings from the resulting Hiccup. Defaults to true.         |
+| :parser               | function                         | Parser function. Defaults to com.zidicat.inview.parse-html/parse.             |
+| :inline               | boolean                          | Inline the template during macro expansion if it can.                         |
+
+*** Inline template
+If ~(:inline settings)~ and ~(can-inline? args source)~ are truthy then ~def-view~ will inline the generated hiccup into the macro expansion. This means it won't re-parse the source or regenerate the template. This can be annoying for interactive development as any changes to the HTML file won't be reflected. However setting it to ~true~ during AOT compilation or when building ~cljs~ code means the HTML files won't need to be included in the deployment artefacts. For example:
+#+begin_src clojure
+  (defmethod html/get-settings "test.html" [s]
+    (merge {:strip-whitespace     true
+            :template-search-path ["./"]
+            :inline #?(:clj (System/getenv "ENV_VAR_SET_DURING_AOT_PROCESS") :cljs true)}
+           s))
+#+end_src
+
+It can be useful to override the ~:default~ method for this.
+
+*** Alternative parser functions
+The default parser is built on the ~SAXParser~ API included with the JVM for minimal dependencies, but it can be pretty strict. An alternative parser can used, for example [[https://github.com/clj-commons/hickory][Hickory]]. See [[file:test/com/zidicat/hiccup_test.clj::(defn parser \[f\]][this example]].
+
+** Chaining templates
+Functions can be chained together, if the dependency returns valid hiccup. For example:
+#+name: Chaining Templates
+#+begin_src clojure -t
+  (defn page []
+    [:html {}
+     [:head {} [:title {} "TITLE!"]]
+     [:body {}
+      [:div {:class "header"} [:h1 {} "Title"] [:div {:class "nav"} [:ol {} [:li {} [:a {:class "home"} "Home"]]]]]
+      [:div {:class "main"} [:div {:class "content"}]]
+      [:div {:class "footer"} [:p {} "© 2001 A Space Oddessy"]]]])
+
+  (html/def-view home-page []
+    (page)
+    [:.content] (html/content "Content!"))
+
+  (page)
+  ;; =>
+  [:html {}
+   [:head {} [:title {} "TITLE!"]]
+   [:body {}
+    [:div {:class "header"} [:h1 {} "Title"] [:div {:class "nav"} [:ol {} [:li {} [:a {:class "home"} "Home"]]]]]
+    [:div {:class "main"} [:div {:class "content"}]]
+    [:div {:class "footer"} [:p {} "© 2001 A Space Oddessy"]]]]  
+#+end_src
+
+If the source requires arguments provided parameters, as below, then the macro will not inline the template contents and ~eval~ the provided function each time.
+#+name: Not inlined
+#+begin_src clojure -t
+  (html/def-view page [nav-section]
+    "test.html"
+    [:.nav :li] (html/clone-map (fn [title link class]
+                                  (html/subform
+                                   [:a] (comp
+                                         (html/alter-if (html/has-class? nav-section) (html/add-class "nav-highlight"))
+                                         (html/content title)
+                                         (html/set-attrs :href link)
+                                         (html/add-class class))))
+                                ["Home" "Link 1" "Link 2" "Link 3"]
+                                ["/home" "/link1" "/link2" "/link3"]
+                                ["home" "link1" "link2" "link3"]))
+
+  (html/def-view special-page [nav-section]
+    (page nav-section)
+    [:.content] (html/content "Content!"))
+
+  (special-page "home")
+  ;; =>
+  [:html {}
+   [:head {} [:title {} "Title"]]
+   [:body {}
+    [:div {:class "header"}
+     [:h1 {} "Title"]
+     [:div {:class "nav"}
+      [:ol {}
+       [:li {} [:a {:class "home nav-highlight", :href "/home"} "Home"]]
+       [:li {} [:a {:class "home link1 nav-highlight", :href "/link1"} "Link 1"]]
+       [:li {} [:a {:class "home link2 nav-highlight", :href "/link2"} "Link 2"]]
+       [:li {} [:a {:class "home link3 nav-highlight", :href "/link3"} "Link 3"]]]]]
+    [:div {:class "main"} [:div {:class "content"} "Content!"]]
+    [:div {:class "footer"} [:p {} "© 2001 A Space Oddessy"]]]]
+#+end_src
+** HTML Rendering
+*** Ring
+There is also some ring middleware that can be used to turn hiccup into a ring response, ~com.zidicat.inview.ring/render-middleware~. Given a ~deps.edn~ something like:
+#+begin_src shell :results silent
+  clj -Sdeps '{:deps {ring/ring {:mvn/version "1.10.0"} com.zidicat/inview {:git/sha "TODO"} metosin/reitit {:mvn/version "0.7.0"}}}'
+#+end_src
+
+Some code something like this will setup a minimal dev server to render resposes in Ring middlware, with Reitit for routing.
+#+begin_src clojure :results silent
+  (ns dev.system
+    (:require [reitit.ring :as reitit-ring]
+              [ring.adapter.jetty :refer [run-jetty]]
+              [com.zidicat.inview.ring :as inview-ring]
+              [com.zidicat.inview :as html]
+              [reitit.core :as r]))
+
+  (defmethod html/get-settings "page.html" [s]
+    {:content [:html {}
+               [:head {} [:title {} "TITLE!"]]
+               [:body {}
+                [:div {:class "header"} [:h1 {} "Title"] [:div {:class "nav"} [:ol {} [:li {} [:a {:class "home"} "Home"]]]]]
+                [:div {:class "main"} [:div {:class "content"}]]
+                [:div {:class "footer"} [:p {} "&copy; 2001 A Space Oddessy"]]]]})
+
+  (html/def-view page [request]
+    ["page.html"]
+    [:.main] (html/content "Hello World!"))
+
+  (defonce web-server (atom nil))
+
+  (defn app [req]
+    (let [f (-> ["/" {:name ::hello-world :get page}]
+                reitit-ring/router
+                (reitit-ring/ring-handler (reitit-ring/create-default-handler) {:inject-match? true})
+                inview-ring/render-middleware)]
+      (f req)))
+
+  (defn boot []
+    (swap! web-server
+           (fn [s]
+             (when s (.stop s))
+             (run-jetty #'app {:join? false :port 8888}))))
+
+  (comment
+
+    (boot)
+
+    )
+
+#+end_src
+*** Alternative rendering functions
+

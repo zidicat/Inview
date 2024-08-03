@@ -1,0 +1,1 @@
+{:lint-as {com.zidicat.inview/def-view clojure.core/defn}}

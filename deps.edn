@@ -1,0 +1,32 @@
+{:deps    {#_ #_ org.clojure/clojure {:mvn/version "1.10.1"}}
+ :paths   ["src" "resources"]
+ :aliases {:test        {:extra-paths ["test"]
+                         :extra-deps  {hiccup/hiccup             {:mvn/version "1.0.5"}
+                                       enlive/enlive             {:mvn/version "1.1.6"}
+                                       taipei.404/html-to-hiccup {:mvn/version "0.1.8"}
+                                       org.clj-commons/hickory   {:mvn/version "0.7.4"}
+                                       criterium/criterium       {:mvn/version "0.4.6"}}}
+           :dev         {:extra-paths ["test"]
+                         :extra-deps  {hiccup/hiccup             {:mvn/version "1.0.5"}
+                                       enlive/enlive             {:mvn/version "1.1.6"}
+                                       taipei.404/html-to-hiccup {:mvn/version "0.1.8"}
+                                       org.clj-commons/hickory   {:mvn/version "0.7.4"}
+                                       criterium/criterium       {:mvn/version "0.4.6"}}}
+           :1.7         {:override-deps {org.clojure/clojure {:mvn/version "1.7.0"}}}
+           :1.8         {:override-deps {org.clojure/clojure {:mvn/version "1.8.0"}}}
+           :1.9         {:override-deps {org.clojure/clojure {:mvn/version "1.9.0"}}}
+           :1.10        {:override-deps {org.clojure/clojure {:mvn/version "1.10.1"}}}
+           :1.11        {:override-deps {org.clojure/clojure {:mvn/version "1.11.1"}}}
+           :1.12        {:override-deps {org.clojure/clojure {:mvn/version "1.12.0-alpha1"}}}
+           :master      {:override-deps {org.clojure/clojure {:mvn/version "1.13.0-master-SNAPSHOT"}}}
+           :runner      {:extra-deps {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
+                                                                 :sha     "b6b3193fcc42659d7e46ecd1884a228993441182"}}
+                         :main-opts  ["-m" "cognitect.test-runner" "-d" "test"]}
+           :cljs-runner {:extra-deps {olical/cljs-test-runner {:mvn/version "3.8.0"}}
+                         :main-opts  ["-m" "cljs-test-runner.main"]}
+           :jar         {:extra-deps {seancorfield/depstar {:mvn/version "1.1.136"}}
+                         :main-opts  ["-m" "hf.depstar.jar" "inview.jar"]}
+           :install     {:extra-deps {deps-deploy/deps-deploy {:mvn/version "0.0.9"}}
+                         :main-opts  ["-m" "deps-deploy.deps-deploy" "install" "inview.jar"]}
+           :deploy      {:extra-deps {deps-deploy/deps-deploy {:mvn/version "0.0.9"}}
+                         :main-opts  ["-m" "deps-deploy.deps-deploy" "deploy" "inview.jar"]}}}
