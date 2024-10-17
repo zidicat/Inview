@@ -35,7 +35,8 @@ You can define a function that will return a hiccup style data structure represe
   (ns my.ns
     (:require [com.zidicat.inview :as html]))
 
-  (html/def-view page []                                                                      (ref:macro-example)
+  ;;                                                                                          (ref:macro-example)
+  (html/def-view page []
     ["test.html"]
     [:head :title] (html/content "TITLE!"))
 
@@ -55,7 +56,8 @@ The ~html/def-view~ macro will parse the HTML file, apply the provided transform
 The def-view macro loads the contents of the HTML template into the function definition. This means that the HTML templates will not have to be available after an AOT or ClojureScript compilation step. However, there is also a macro-free API that can also be used.
 #+name: Macro-free Dynamic API
 #+begin_src clojure -t -r
-  (defn page []                                                                          (ref:macro-free-example)
+  ;;                                                                                     (ref:macro-free-example)
+  (defn page []
     (html/transform (html/load-source {:file "test.html"})
                     [:head] (html/content "TITLE!")))
 
@@ -205,11 +207,60 @@ It also allows for an optional function to transform the resulting hiccup. This 
 **** Clj Kondo config
 You should be able to lint the ~def-view~ macro as ~clojure.core/defn~, especially if you put any string filenames in a vector to avoid the mis-placed docstring warning. There is a config file exported [[file:resources/clj-kondo.exports/com.zidicat/inview/config.edn::{:lint-as {com.zidicat.inview/def-view clojure.core/defn}}][here]].
 
-**** TODO Rendering as more than strings
-This is work in progress.
+**** Rendering as more than strings
+The ~com.zidicat.inview.render-as~ name-space includes functions which can be used to process the hiccup into things other than strings. For example, this CLJS snippet will transform the hiccup into JS objects and insert it into the page.
+#+begin_src clojure
+  (require '[com.zidicat.inview.render-as :as render])
+  (->> [:div {} [:button {:class ["dog"] :onClick (fn [] (js/alert "here"))} "button"]]
+       (render/tree-duce (map identity) (render/js-dom-rf) (render/js-dom-render-settings))
+       (.appendChild (js/document.getElementById "app")))
+#+end_src
+**** Debugging
+There is a dynamic var ~com.zidicat.inview/*debug-transform-fn*~ which when bound to a function, it will be during template rendering with debugging info.
+#+begin_src clojure -t
+  (require '[clojure.pprint :as ppr])
+  (add-tap ppr/pprint)
+  (binding [html/*debug-transform-fn* tap>]
+    (html/transform
+     [:div {:class "nav"} [:span {} [:a {} "Home"]]]
+     [:.nav :a] (html/clone-map #(comp (html/content %1)
+                                       (html/set-attrs :href %2)
+                                       (html/add-class %3))
+                                ["Home" "Link 1" "Link 2" "Link 3"]
+                                ["/home" "/link1" "/link2" "/link3"]
+                                (cycle ["light-background" "dark-background"]))))
 
+  ;; output
+  ;; {:before [:div {:class "nav"} [:span {} [:a {} "Home"]]],
+  ;;  :selector [:.nav :a],
+  ;;  :path [2 2],
+  ;;  :matched-element [:a {} "Home"],
+  ;;  :transformed-result
+  ;;  [[:a {:class "light-background", :href "/home"} "Home"]
+  ;;   [:a {:class "dark-background", :href "/link1"} "Link 1"]
+  ;;   [:a {:class "light-background", :href "/link2"} "Link 2"]
+  ;;   [:a {:class "dark-background", :href "/link3"} "Link 3"]],
+  ;;  :replace-fn #function[com.zidicat.inview/clone-map/clone-map--16906],
+  ;;  :after
+  ;;  [:div
+  ;;   {:class "nav"}
+  ;;   [:span
+  ;;    {}
+  ;;    [:a {:class "light-background", :href "/home"} "Home"]
+  ;;    [:a {:class "dark-background", :href "/link1"} "Link 1"]
+  ;;    [:a {:class "light-background", :href "/link2"} "Link 2"]
+  ;;    [:a {:class "dark-background", :href "/link3"} "Link 3"]]]}
+
+  ;; =>
+  [:div {:class "nav"}
+   [:span {}
+    [:a {:class "light-background", :href "/home"} "Home"]
+    [:a {:class "dark-background", :href "/link1"} "Link 1"]
+    [:a {:class "light-background", :href "/link2"} "Link 2"]
+    [:a {:class "dark-background", :href "/link3"} "Link 3"]]]
+#+end_src
 ** Configuring ~load-source~ and ~def-view~
-There is a multimethod that can be used to configure the settings for the content loaded by ~load-source~. Also the ~def-view~ macro can inline the parsed template. The multimethod dispatches on the ~:file~ key which allows for configuration to be on a per file basis. ~clean-settings~ will be called on the source by ~def-view~ to allow the convenience of putting a single string to name a file to parse. Things that can be configured by overriding ~get-settings~ are:
+There is a multimethod that can be used to configure the settings for the content loaded by ~load-source~. Also the ~def-view~ macro can inline the parsed template. The multimethod dispatches on the ~:file~ key which allows for configuration to be on a per file basis. ~clean-settings~ will be called on the source by ~def-view~ to allow the convenience of putting a single ing to name a file to parse. Things that can be configured by overriding ~get-settings~ are:
 | Key                   | Type                             | Description                                                                   |
 |-----------------------+----------------------------------+-------------------------------------------------------------------------------|
 | :file                 | String or java.io.File           | File to load.                                                                 |
@@ -349,4 +400,30 @@ Some code something like this will setup a minimal dev server to render resposes
 
 #+end_src
 *** Alternative rendering functions
+The ~com.zidicat.inview.render-as~ name-space includes ~tree-duce~ which can be used to transform the hiccup while rendering. This is an example of applying https://github.com/NoahTheDuke/fluent-clj to lookup text for internationalisation, which can be used independently, in middleware for example.
+#+name: I18n
+#+begin_src clojure -t
+  (require '[com.zidicat.inview.render-as :as render])
+  (require '[noahtheduke.fluent :as i18n])
+
+  (let [sample-resource "
+hello = Hello world!
+welcome = Welcome, {$user}!
+email-cnt = {$cnt ->
+    [one] {$cnt} email
+    *[other] {$cnt} emails
+}"
+        bundle (i18n/build "en" sample-resource)
+        xform (map (fn [x]
+                     (if (and (sequential? x) (= :i18n (first x)))
+                       (apply i18n/format bundle (next x))
+                       x)))]
+    (->> [:div {} [:span {:class "greeting"} [:p [:i18n :hello]]]]
+         (render/tree-duce xform (render/render-string-rf) (render/str-render-settings))))
+  ;; =>
+  "<div><span class=\"greeting\"><p>Hello world!</p></span></div>"
+#+end_src
+** Troubleshooting
+*** My template works in Clojure but is ~nil~ in ClojureScript
+You probably want to set ~:inline~ to be ~true~ in cljs. See the [[*Inline template][Inline template]] section.
 

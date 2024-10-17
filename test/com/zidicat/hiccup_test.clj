@@ -5,7 +5,9 @@
             [hiccup.compiler :as hic]
             [taipei-404.html :as parse]
             [hickory.core :as hickory]
-            #_ [clojure.string :as str]))
+            [clojure.string :as string]))
+
+;; TOOD think about this lib : https://github.com/cjohansen/lookup
 
 (def template-conf {:strip-whitespace     true
                     :parser               :default
@@ -53,25 +55,52 @@
     (let [user    {:name "Mr Bob Dabolina"}
           alt     (alternative-logged-in-user user)
           default (default-logged-in-user user)]
-        (is (= default alt))
+      (testing "different parsers produce the same hiccup"
+        (is (= default alt)))
+      (testing "can render to string"
         (is (= (into [[:!DOCTYPE {:html true}]] (parse/html->hiccup (hic/render-html default)))
                (-> (render/tree-duce (map identity) (render/render-string-rf) (render/str-render-settings) default)
-                   parse/html->hiccup)))
-        #_ (is (= :test #_ default
+                   parse/html->hiccup))))
+      #_ (testing "fake js api"
+        (is (= :test #_ (into ["<!DOCTYPE html>"] default)
                (render/tree-duce (map identity)
                                  conj
                                  {:empty-content []
-                                  #_ #_ :close-tag (fn [t] [:/ t])
+                                  :tag-fn (fn [x]
+                                            (if-let [nom (namespace x)]
+                                              (keyword (str "js/document.createElementNS/" nom) (name x))
+                                              (keyword "js/document.createElement" (name x))))
                                   :empty-attr (fn [tag r rf]
-                                                (fn
-                                                  ([] [tag {}])
-                                                  ([t] #_ (rf r t)
-                                                   r)
-                                                  ([el x]
-                                                   (let [[k v] (when (sequential? x) x)]
-                                                     (assoc-in el [1 k] v)))))
-                                  :attr-xform (map identity)}
-                                 default))))))
+                                                (let [nss {"svg" "http://www.w3.org/2000/svg"
+                                                           "xhtml" "http://www.w3.org/1999/xhtml"
+                                                           "xlink" "http://www.w3.org/1999/xlink"
+                                                           "rdf" "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+                                                           "cc" "http://creativecommons.org/ns#"
+                                                           "dc" "http://purl.org/dc/elements/1.1/"}]
+                                                  (fn
+                                                    ([] tag)
+                                                    ([t] t)
+                                                    ([el [k v]]     ;TODO read study learn and inwardly digest ... and correct??
+                                                     (cond
+                                                       (qualified-keyword? k)
+                                                       (.setAttributeNS el (get nss (namespace k)) (name k) v)
+
+                                                       (= "on-" (subs (name k) 0 3))
+                                                       ;; Set event handlers directly, rather than through setAttribute
+                                                       (unchecked-set el (string/lower-case (name k)) v)
+
+                                                       (and (= :class k) (sequential? v))
+                                                       (.setAttribute el "class" (string/join " " v))
+
+                                                       (and (= :style k) (map? v))
+                                                       (doseq [[prop val] v]
+                                                         (.setProperty (.-style el) (name prop) val))
+
+                                                       :else
+                                                       (.setAttribute el (name k) v))))))
+                                  :attr-xform (map (fn [x] x))}
+                                 default)))))))
+
 
 
 
@@ -79,6 +108,8 @@
 
 
 (comment
+
+  (default-logged-in-user {:name "Mr Bob Dabolina"})
 
   (pop [1 2 3])
 

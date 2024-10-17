@@ -6,6 +6,9 @@
             [com.zidicat.inview.render-as :as rndr]
             [com.zidicat.inview.selector :as selector]))
 
+;; TODO debuging transform
+;; TODO pretty printing error messages
+
 ;; TODO add spec for hiccup
 ;; TODO perf testing (write to string buffer / output stream ?)
 
@@ -35,7 +38,7 @@
 (defmulti get-settings "Settings used by `load-source`. Allows for over-ridding settings on a per file basis." :file)
 (defmethod get-settings :default [s]
   (merge {:strip-whitespace     true
-          :template-search-path ["./"]
+          :template-search-path ["./" "../" "../page"]
           :inline #?(:clj false :cljs true)}
          s))
 
@@ -45,9 +48,15 @@
   (if (sequential? dom)
     (let [[tag & content] dom
           [t p c]         (when-not (sequential? tag)
-                            (if (map? (first content))
-                              [tag (first content) (next content)]
-                              [tag {} content]))]
+                            (let [[tag & classes] (-> tag name (string/split #"\."))
+                                  tag             (keyword tag)
+                                  classes         (reduce #(update %1 :class (fnil conj []) %2) {} classes)
+                                  classes         (if (-> classes :class vector?)
+                                                    (update classes :class (comp (partial string/join " ") distinct))
+                                                    classes)]
+                              (if (map? (first content))
+                                [tag (merge-with (fn [a b] (str a " " b)) classes (first content)) (next content)]
+                                [tag classes content])))]
       (if (sequential? tag)
         (with-meta (mapv ensure-attrs-exist dom) (meta dom))
         (with-meta (into [t p] (map ensure-attrs-exist) c) (meta dom))))
@@ -69,11 +78,23 @@
   [dom & sels]
   (selector/make-template dom sels))
 
+(def ^:dynamic *debug-transform-fn* nil)
+
 (defn transform-template
   "Apply transformations to template (created with `template`). `transformations` must match `sels` previously provdided
   to `template`."
   [template & transformations]
-  (selector/render-template template transformations))
+  (if *debug-transform-fn*
+    (selector/render-template template transformations *debug-transform-fn*)
+    (selector/render-template template transformations)))
+
+(defn select-from [{:keys [dom selectors]} content-attrs-or-tag]
+  (let [f (-> content-attrs-or-tag
+              ({:content (fn [[_ _ & content]] content)
+                :attrs   (fn [[_ attrs & _ ]] attrs)
+                :tag     (fn [[tag & _ ]] tag)}
+               identity))]
+    (mapv (fn [{:keys [paths]}] (mapv (fn [p] (f (get-in dom p))) paths)) selectors)))
 
 (defn transform
   "Transform `dom` with `sel-transform-pairs` in turn. Does not separate `template` and `transform-template` steps."
@@ -118,6 +139,13 @@
                                           :subform :clone-map}
                                          e))))))
            list other-lists)))
+
+(defn tap
+  "Creates a transform that will dump element to `tap>` and then return it unchanged."
+  []
+  (fn [el]
+    (tap> [::debug el])
+    el))
 
 (defn append
   "Creates transfom that adds `els` onto the end of the matched element."
@@ -207,7 +235,10 @@
              (with-meta d (meta dom))
              d))
          (if (fn? else-fn)
-           (with-meta (else-fn dom) (meta dom))
+           (let [d (else-fn dom)]
+             (if (vector? d)
+               (with-meta d (meta dom))
+               d))
            dom))))))
 
 (defn load-source
@@ -295,6 +326,7 @@
                   (tree-seq (some-fn sequential? map?) (fn [x] (if (map? x) (mapcat seq x) (seq x))))
                   (some arg-symbols)))))))
 
+;;TODO think about adding another arity that takes some options for debugging purposes or something?
 (defmacro def-view
   "Macro that defines a function that loads the template and applies the provided transforms."
   [name args source & body]
@@ -311,34 +343,43 @@
                                   [nil body])
 
         pairs  (partition 2 transforms)
-        ret-fn (when (not= (last transforms) (second (last pairs)))
-                 (last transforms))
+        ret-fn (if (not= (last transforms) (second (last pairs)))
+                 `(comp ~(last transforms) transform-template)
+                 `transform-template)
         sels   (mapv first pairs)
         tfns   (mapv second pairs)
-        docstr (str "Template definied by `com.zidicat.inview/def-view` from " source ". Takes " args ".")]
+        docstr (str "Template definied by `com.zidicat.inview/def-view` from " source ". Takes " args ".\nSettings: " settings)]
     (if (and (:inline settings) (can-inline? args source))
       (let [dom (load-source settings)]
         `(let [template# (with-meta (template ~dom ~@sels) ~(meta dom))]
            (defn ~name
-             ~(str docstr " Template has been inlined.")
+             ~(str docstr "\nTemplate has been inlined.\n\nMatches:\n"
+                   (string/join (mapcat (juxt :selector (constantly " matches ") (comp count :paths) (constantly " element(s)\n")) (:selectors (apply template dom sels))))
+                   "\nDom:\n"
+                   dom)
              ~args
              (let [~@local-lets
-                   transform# ~(if ret-fn `(comp ~ret-fn transform-template) `transform-template)]
+                   transform# ~ret-fn]
+               (when (fn? *debug-transform-fn*) (*debug-transform-fn* ~(pr-str settings)))
                (transform# template# ~@tfns)))))
       `(defn ~name
-         ~docstr
+         ~(str docstr "\n\nMatches:\n" (string/join "\n" sels))
          ~args
-         (let [dom# (-> ~source clean-settings get-settings)
-               dom# (if-let [[f# & args#] (:form dom#)]
-                      (apply f# args#)
-                      (load-source dom#))
-               template# (with-meta (template dom# ~@sels) (meta dom#))
+         (let [dom#       (-> ~source clean-settings get-settings)
+               dom#       (if-let [[f# & args#] (:form dom#)]
+                            (apply f# args#)
+                            (load-source dom#))
+               template#  (with-meta (template dom# ~@sels) (meta dom#))
                ~@local-lets
-               transform# ~(if ret-fn `(comp ~ret-fn transform-template) `transform-template)]
+               transform# ~ret-fn]
+           (when (fn? *debug-transform-fn*) (*debug-transform-fn* ~(pr-str settings)))
            (transform# template# ~@tfns))))))
 
 (comment
 
+  #?(:clj
+     (do (require '[clojure.pprint :as ppr])
+         (let [sw (java.io.StringWriter.)] (ppr/write [:a :b :c 0 1 2 3 {:a [1 2 3 4] :b [1 2 3 4] :c [1 2 3 4 [1 2 3 4]] :d [1 2 3 4 [1 2 3 4]]}] :stream sw :pretty true :right-margin 80) (.toString sw))))
 
   (def template-conf {:strip-whitespace     true
                       :parser               :default

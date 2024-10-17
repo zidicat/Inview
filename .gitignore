@@ -48,3 +48,8 @@ Thumbs.db
 *.mov
 *.wmv
 
+.cpcache/
+.lsp/
+cljs-test-runner-out/
+.clj-kondo/.cache
+out

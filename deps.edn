@@ -1,23 +1,28 @@
-{:deps    {#_ #_ org.clojure/clojure {:mvn/version "1.10.1"}}
+ ;; (require 'clojure.repl.deps)
+ ;; (clojure.repl.deps/add-lib 'io.github.noahtheduke/fluent-clj {:mvn/version "0.0.2"})
+{:deps    {}
  :paths   ["src" "resources"]
  :aliases {:test        {:extra-paths ["test"]
-                         :extra-deps  {hiccup/hiccup             {:mvn/version "1.0.5"}
-                                       enlive/enlive             {:mvn/version "1.1.6"}
-                                       taipei.404/html-to-hiccup {:mvn/version "0.1.8"}
-                                       org.clj-commons/hickory   {:mvn/version "0.7.4"}
-                                       criterium/criterium       {:mvn/version "0.4.6"}}}
+                         :extra-deps  {hiccup/hiccup                    {:mvn/version "1.0.5"}
+                                       enlive/enlive                    {:mvn/version "1.1.6"}
+                                       taipei.404/html-to-hiccup        {:mvn/version "0.1.8"}
+                                       org.clj-commons/hickory          {:mvn/version "0.7.4"}
+                                       criterium/criterium              {:mvn/version "0.4.6"}
+                                       io.github.noahtheduke/fluent-clj {:mvn/version "0.0.2"}}}
            :dev         {:extra-paths ["test"]
                          :extra-deps  {hiccup/hiccup             {:mvn/version "1.0.5"}
                                        enlive/enlive             {:mvn/version "1.1.6"}
                                        taipei.404/html-to-hiccup {:mvn/version "0.1.8"}
                                        org.clj-commons/hickory   {:mvn/version "0.7.4"}
                                        criterium/criterium       {:mvn/version "0.4.6"}}}
+           :cljs        {:extra-deps {org.clojure/clojurescript {:mvn/version "1.11.132"}}
+                         :main-opts  ["--main" "cljs.main" "--compile" "com.zidicat.hiccup-test" "--repl"]}
            :1.7         {:override-deps {org.clojure/clojure {:mvn/version "1.7.0"}}}
            :1.8         {:override-deps {org.clojure/clojure {:mvn/version "1.8.0"}}}
            :1.9         {:override-deps {org.clojure/clojure {:mvn/version "1.9.0"}}}
            :1.10        {:override-deps {org.clojure/clojure {:mvn/version "1.10.1"}}}
            :1.11        {:override-deps {org.clojure/clojure {:mvn/version "1.11.1"}}}
-           :1.12        {:override-deps {org.clojure/clojure {:mvn/version "1.12.0-alpha1"}}}
+           :1.12        {:override-deps {org.clojure/clojure {:mvn/version "1.12.0"}}}
            :master      {:override-deps {org.clojure/clojure {:mvn/version "1.13.0-master-SNAPSHOT"}}}
            :runner      {:extra-deps {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
                                                                  :sha     "b6b3193fcc42659d7e46ecd1884a228993441182"}}

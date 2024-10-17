@@ -12,7 +12,11 @@
   (fn [req]
     (let [res (h req)
           r (cond (vector? (:body res))
-                  (update res :body render/render-str)
+                  (-> res
+                      (update :body render/render-str)
+
+                      (cond-> (-> res :headers (get "Content-Type") nil?)
+                        (assoc-in [:headers "Content-Type"] (doctype->content-type res))))
 
                   (vector? res)
                   {:status 200 :headers {"Content-Type" (doctype->content-type res)} :body (render/render-str res)}

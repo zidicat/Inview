@@ -1,6 +1,7 @@
 (ns com.zidicat.inview-test
   (:require [#?@(:clj [clojure.test :refer] :cljs [cljs.test :refer-macros]) [deftest testing is are] :as test]
             [clojure.string :as string]
+            [clojure.edn :as edn]
             [com.zidicat.inview :as html #?@(:clj [:refer [def-view]] :cljs [:refer-macros [def-view]])]
             [com.zidicat.inview.render-as :as render]))
 
@@ -8,15 +9,13 @@
   {:strip-whitespace     true
    :parser               :default
    :file                 "test/com/zidicat/inview-test.html"
-   :template-search-path [".." "../libs/inview" "." "../org-project/libs/inview"]
+   :template-search-path [".." "../libs/inview" "../../libs/inview" "." "../org-project/libs/inview"]
    :render               :default})
 
 (defmethod html/get-settings "test/com/zidicat/inview-test.html" [s]
   (merge (template-conf) s))
 
-(comment
-
-  (deftest loading
+(deftest loading
   #?(:clj
      (testing "reading html files"
        (testing "no selector"
@@ -69,12 +68,16 @@
                 (html/load-source (template-conf))))))))
 
 (deftest private-utils
-  (let [ensure-properties-exist #'com.zidicat.inview/ensure-attrs-exist]
-    (testing "ensure-properties-exist"
-      (is (= [:html {} [:div {:class "div"} [:span {} "text"]]]
-             (ensure-properties-exist [:html [:div {:class "div"} [:span "text"]]])))
-      (is (= [[:DOCTYPE! {:html true}] [:html {} [:div {:class "div"} [:span {} "text"]]]]
-             (ensure-properties-exist [[:DOCTYPE! {:html true}] [:html [:div {:class "div"} [:span "text"]]]]))))))
+  (testing "ensure-properties-exist"
+    (is (= [:html {} [:div {:class "div"} [:span {} "text"]]]
+           (html/ensure-attrs-exist [:html [:div {:class "div"} [:span "text"]]])))
+    (is (= [:html {} [:div {:class "text div"} [:span {} "text"]]]
+           (html/ensure-attrs-exist [:html [:div.text.div [:span "text"]]])))
+    (is (= [[:DOCTYPE! {:html true}] [:html {} [:div {:class "div"} [:span {} "text"]]]]
+           (html/ensure-attrs-exist [[:DOCTYPE! {:html true}] [:html [:div {:class "div"} [:span "text"]]]])))
+    ;; TODO: do we need to support this?
+    #_ (is (= [:html {} [:div {:class "div"} [:span {:id "id1"} "text"]]]
+           (html/ensure-attrs-exist [:html [:div {:class "div"} [:span#id1 "text"]]])))))
 
 (deftest rendering
   (testing "html rendering"
@@ -136,7 +139,7 @@
   (testing "html selection"
     (testing "html 1"
       (let [dom [:div {:class "logout"}
-                 [:span {} "Logged in as " [:span {:class "user"} "User"]]
+                 [:span {:class "note"} "Logged in as " [:span {:class "user"} "User"]]
                  [:form {:id "logout-form", :method "POST", :action "/api/logout"}
                   [:input {:type "submit", :name "logout", :value "Logout"}]]
                  [:div {} [:span {:id "user" :class "cow fish dog"} [:p {} "Some" "text"]]]]]
@@ -157,7 +160,19 @@
           [:span.dog]               [[4 2]]
           [{:class "cow fish dog"}] [[4 2]]
           [:div :span]              [[2] [4 2]]
-          [:div :span :p]           [[4 2 2]])))
+          [:div :span :p]           [[4 2 2]])
+        (testing "scrape"
+          (are [s f p]
+              (= p (html/select-from (html/template dom s) f))
+            [:form#logout-form] :tag     [[:form]]
+            [:span]             :attrs   [[{:class "note"} {:id "user", :class "cow fish dog"}]]
+            [:.logout]          :content [[[[:span {:class "note"} "Logged in as " [:span {:class "user"} "User"]]
+                                            [:form {:id "logout-form", :method "POST", :action "/api/logout"}
+                                             [:input {:type "submit", :name "logout", :value "Logout"}]]
+                                            [:div {}
+                                             [:span {:id "user", :class "cow fish dog"}
+                                              [:p {} "Some" "text"]]]]]]
+            [:span.cow]         :all     [[[:span {:id "user", :class "cow fish dog"} [:p {} "Some" "text"]]]]))))
     (testing "html 2"
       (let [dom [:div
                  {:class "agenda"}
@@ -240,7 +255,21 @@
                               [:li {} [:span {} "test-0"]]
                               [:li {} [:span {} "test-1"]]
                               [:li {} [:span {} "test-2"]]]]
-                   (html/transform-template tem (html/clone-map #(html/replace (func %)) (range 3))))))))
+                   (html/transform-template tem (html/clone-map #(html/replace (func %)) (range 3)))))))
+
+        (testing "html/clone-map + html/replace splicing"
+          (let [dom [:html {} [:div {} [:h1 {} "Test"] [:p {:class "para"} "Para"] [:div {} "Footer"]]]
+                tem (html/template dom [:.para])
+                func (fn [x] [:p {:class "para"} (str "test-" x)])]
+            (is (= [:html {} [:div {}
+                              [:h1 {} "Test"]
+                              [:p {:class "para"} "test-0"]
+                              [:p {:class "para"} "test-1"]
+                              [:p {:class "para"} "test-2"]
+                              [:div {} "Footer"]]]
+                   #_ (html/transform-template tem (html/replace (func 0)))
+                   (html/transform-template tem (html/clone-map #(html/replace (func %)) (range 3)))
+                   )))))
 
       (testing "html/set-attrs"
         (is (= [:html {} [:ol {} [:li {:id "task-123" :class "task"} "Things to do today"]]]
@@ -276,7 +305,7 @@
         (testing "nil renders as empty string"
           (is (= (render/render-str [:html {} [:ol {}]])
                  (render/render-str (html/transform-template tem (html/delete)))))))
-
+      
       (testing "html/wrap"
         (is (= [:html {} [:ol {} [:li {:class "task"} [:span {:class "test"} "Things to do today"]]]]
                (html/transform-template tem (html/wrap :span {:class "test"}))))
@@ -347,7 +376,7 @@
                                 :inline               true
                                 :parser               :default
                                 :file                 "test/com/zidicat/inview-test.html"
-                                :template-search-path [".." "../libs/inview" "." "../org-project/libs/inview"]
+                                :template-search-path [".." "../libs/inview" "../../libs/inview" "." "../org-project/libs/inview"]
                                 :render               :default}
                                [:.user] (com.zidicat.inview/content (:name user))
                                com.zidicat.inview/render))]
@@ -379,28 +408,7 @@
         (is (= (logged-in-user {:name ["Bob" "!"]}) (chained-source {:name "Bob"})))
         (is (= (string/replace expected-html #"Bob" "Bob!") (html/render (chained-source {:name "Bob"})))))
 
-      (comment
-
-        (not (= [1]
-                (clojure.core/defn chained-source "Template definied by `com.zidicat.inview/def-view` from (logged-in-user user)." [user]
-                  (clojure.core/let [dom__1426__auto__ (clojure.core/->
-                                                        (logged-in-user user)
-                                                        com.zidicat.inview/clean-settings
-                                                        com.zidicat.inview/get-settings)
-                                     dom__1426__auto__ (clojure.core/if-let [[f__1427__auto__ & args__1428__auto__] (:form dom__1426__auto__)]
-                                                         (clojure.core/apply f__1427__auto__ args__1428__auto__)
-                                                         (com.zidicat.inview/load-source dom__1426__auto__))
-                                     template__1429__auto__ (clojure.core/with-meta (com.zidicat.inview/template dom__1426__auto__ [:.user]) (clojure.core/meta dom__1426__auto__))
-                                     transform__1430__auto__ com.zidicat.inview/transform-template]
-                    (transform__1430__auto__ template__1429__auto__ (html/append "!"))))))
-
-        (not (= [:html {} [:head {}] [:body {} [:div {:class "login"} [:form {:class "ajaxform", :method "POST", :action "/api/login"} [:fieldset {} [:label {:for "login-id"} "Login:"] [:input {:type "text", :name "login-id"}] [:label {:for "login-password"} "Password:"] [:input {:type "password", :name "login-password"}] [:input {:type "submit", :name "login", :value "Login"}]]]] [:div {:class "logout"} [:span {} "Logged in as " [:span {:class "user"} "Bob" "!"]] [:form {:class "ajaxform", :method "POST", :action "/api/logout"} [:input {:type "submit", :name "logout", :value "Logout"}]]]]]
-                nil))
-
-        )
-
-      
-      (testing "something"
+      (testing "a chained source"
         (is (= [:html {}
                 [:head {}]
                 [:body {}
@@ -417,52 +425,98 @@
                   [:form {:class "ajaxform", :method "POST", :action "/api/logout"}
                    [:input {:type "submit", :name "logout", :value "Logout"}]]]]]
                (chained-source {:name "Bob"}))))
+      
       (testing "String content"
         (is (nil? (meta (string-content))))
         (is (= (optional-let) (string-content)))
         (is (= expected-html (html/render (string-content))))))))
 
+(def-view debug-view [user]
+  {:file   "test/com/zidicat/inview-test.html"
+   :inline true}
+  [:.user] (html/content (:name user))
+  [:.user] (html/append "!"))
+
+(deftest debugging
+  (testing "debugging"
+    (let [data        (atom [])
+          dbg         #(swap! data conj %)
+          html        (binding [html/*debug-transform-fn* dbg] (debug-view {:name "Bob"}))
+          [o & steps] @data]
+      {:strip-whitespace true, :parser :default, :file "test/com/zidicat/inview-test.html", :template-search-path [".." "../libs/inview" "../../libs/inview" "." "../org-project/libs/inview"], :render :default, :inline true}
+      {:strip-whitespace true, :template-search-path ["./" "../" "../page"], :inline true, :file "test/com/zidicat/inview-test.html"}
+      (is (= "test/com/zidicat/inview-test.html" (:file (edn/read-string o))))
+      (is (every? (comp vector? :after) steps))
+      (is (vector? html)))))
+
+
 (comment
-  (html/render [:html {} [:head {}]])
 
-  (macroexpand-1 '(html/def-view default-logged-in-user [user]
-    {:strip-whitespace     true
-     :parser               :default
-     :file                 "test/com/zidicat/inview-test.html"
-     :template-search-path [".." "../libs/inview" "."]
-     :render               :default
-     :inline               true}
-    [:.user] (html/content (:name user))
-    [:form]  (html/add-class "fish")
-                    [:form]  (html/remove-class "ajaxform")))
+  (require '[clojure.pprint :as ppr])
+  (add-tap ppr/pprint)
+  (binding [html/*debug-transform-fn* tap>]
+    (html/transform
+     [:div {:class "nav"} [:span {} [:a {} "Home"]]]
+     [:.nav :a] (html/clone-map #(comp (html/content %1)
+                                       (html/set-attrs :href %2)
+                                       (html/add-class %3))
+                                ["Home" "Link 1" "Link 2" "Link 3"]
+                                ["/home" "/link1" "/link2" "/link3"]
+                                (cycle ["light-background" "dark-background"]))))
 
-  (clojure.core/let [template__16506__auto__ (clojure.core/with-meta
-                                               (com.zidicat.inview/template
-                                                [:html {}
-                                                 [:head {}]
-                                                 [:body {}
-                                                  [:div {:class "login"}
-                                                   [:form {:class "ajaxform", :method "POST", :action "/api/login"}
-                                                    [:fieldset {}
-                                                     [:label {:for "login-id"} "Login:"]
-                                                     [:input {:type "text", :name "login-id"}]
-                                                     [:label {:for "login-password"} "Password:"]
-                                                     [:input {:type "password", :name "login-password"}]
-                                                     [:input {:type "submit", :name "login", :value "Login"}]]]]
-                                                  [:div {:class "logout"}
-                                                   [:span {} "Logged in as "
-                                                    [:span {:class "user"} "User"]]
-                                                   [:form {:class "ajaxform", :method "POST", :action "/api/logout"}
-                                                    [:input {:type "submit", :name "logout", :value "Logout"}]]]]]
-                                                [:.user]
-                                                [:form]
-                                                [:form])
-                                               #:com.zidicat.inview{:doctype ["html"]})]
-    (clojure.core/defn default-logged-in-user "Template definied by `com.zidicat.inview/def-view` from {:strip-whitespace true, :parser :default, :file \"test/com/zidicat/inview-test.html\", :template-search-path [\"..\" \"../libs/inview\" \".\"], :render :default, :inline true}. Template has been inlined." [user]
-      (clojure.core/let [transform__16507__auto__ com.zidicat.inview/transform-template]
-        (transform__16507__auto__ template__16506__auto__ (html/content (:name user)) (html/add-class "fish") (html/remove-class "ajaxform")))))
+  ;; {:before [:div {:class "nav"} [:span {} [:a {} "Home"]]],
+  ;;  :selector [:.nav :a],
+  ;;  :path [2 2],
+  ;;  :matched-element [:a {} "Home"],
+  ;;  :transformed-result
+  ;;  [[:a {:class "light-background", :href "/home"} "Home"]
+  ;;   [:a {:class "dark-background", :href "/link1"} "Link 1"]
+  ;;   [:a {:class "light-background", :href "/link2"} "Link 2"]
+  ;;   [:a {:class "dark-background", :href "/link3"} "Link 3"]],
+  ;;  :replace-fn #function[com.zidicat.inview/clone-map/clone-map--16906],
+  ;;  :after
+  ;;  [:div
+  ;;   {:class "nav"}
+  ;;   [:span
+  ;;    {}
+  ;;    [:a {:class "light-background", :href "/home"} "Home"]
+  ;;    [:a {:class "dark-background", :href "/link1"} "Link 1"]
+  ;;    [:a {:class "light-background", :href "/link2"} "Link 2"]
+  ;;    [:a {:class "dark-background", :href "/link3"} "Link 3"]]]}
 
-  (default-logged-in-user {:name "Mr Bob Dabolina"})
+
+  [:div {:class "nav"} [:span {} [:a {:class "light-background", :href "/home"} "Home"] [:a {:class "dark-background", :href "/link1"} "Link 1"] [:a {:class "light-background", :href "/link2"} "Link 2"] [:a {:class "dark-background", :href "/link3"} "Link 3"]]][:div {:class "nav"} [:span {} [:a {:class "light-background", :href "/home"} "Home"] [:a {:class "dark-background", :href "/link1"} "Link 1"] [:a {:class "light-background", :href "/link2"} "Link 2"] [:a {:class "dark-background", :href "/link3"} "Link 3"]]]
+
+  (def-view example [user]
+  {:strip-whitespace     true
+   :parser               :default
+   :file                 "test/com/zidicat/inview-test.html"
+   :template-search-path [".." "../libs/inview" "../../libs/inview" "." "../org-project/libs/inview"]
+   :render               :default}
+  [:.user] (html/content (:name user))
+  [:form]  (html/add-class "fish")
+    [:form]  (html/remove-class "ajaxform"))
+
+  (example {:name "Mr Bob Dabolina"})
   
+  (require '[noahtheduke.fluent :as i18n])
+  (let [sample-resource "
+hello = Hello world!
+welcome = Welcome, {$user}!
+email-cnt = {$cnt ->
+    [one] {$cnt} email
+    *[other] {$cnt} emails
+}"
+        bundle (i18n/build "en" sample-resource)
+        xform (map (fn [x]
+                     (if (and (sequential? x) (= :i18n (first x)))
+                       (apply i18n/format bundle (next x))
+                       x)))]
+    (->> [:div {} [:span {:class "greeting"} [:p [:i18n :hello]]]]
+         (render/tree-duce xform (render/render-string-rf) (render/str-render-settings))))
+  ;; =>
+  "<div><span class=\"greeting\"><p>Hello world!</p></span></div>"
+  
+  
+
   )
-)
