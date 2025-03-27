@@ -29,6 +29,10 @@ Given an HTML file ~test.html~:
   </html>
 #+end_src
 
+You can start a REPL with:
+#+begin_src shell :results silent
+  clj -Sdeps '{:deps {io.github.zidicat/inview {:git/sha "f6d9310ec5393febb85e1247ec8ade482304c68e"}}}'
+#+end_src
 You can define a function that will return a hiccup style data structure representing that HTML:
 #+name: Initial Setup
 #+begin_src clojure -r -t :results silent
@@ -353,7 +357,7 @@ If the source requires arguments provided parameters, as below, then the macro w
 *** Ring
 There is also some ring middleware that can be used to turn hiccup into a ring response, ~com.zidicat.inview.ring/render-middleware~. Given a ~deps.edn~ something like:
 #+begin_src shell :results silent
-  clj -Sdeps '{:deps {ring/ring {:mvn/version "1.10.0"} com.zidicat/inview {:git/sha "TODO"} metosin/reitit {:mvn/version "0.7.0"}}}'
+  clj -Sdeps '{:deps {ring/ring {:mvn/version "1.10.0"} io.github.zidicat/inview {:git/sha "f6d9310ec5393febb85e1247ec8ade482304c68e"} metosin/reitit {:mvn/version "0.7.0"}}}'
 #+end_src
 
 Some code something like this will setup a minimal dev server to render resposes in Ring middlware, with Reitit for routing.

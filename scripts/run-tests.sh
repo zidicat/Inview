@@ -10,7 +10,7 @@ awk 'BEGIN { P=0 ; NAME="" } { if (tolower($0) ~ /^..name: /) {split($0,a,":") ;
 rm test.html
 
 if [ "$1" = "all" ] ; then
-    for v in 1.11 1.10 1.9 1.12 master ; do
+    for v in 1.12 1.11 1.10 ; do
         echo ==== Test Clojure $v ====
         clojure -M:test:runner:$v
         if [ $? -ne 0 ] ; then

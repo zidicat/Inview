@@ -17,9 +17,7 @@
                                        criterium/criterium       {:mvn/version "0.4.6"}}}
            :cljs        {:extra-deps {org.clojure/clojurescript {:mvn/version "1.11.132"}}
                          :main-opts  ["--main" "cljs.main" "--compile" "com.zidicat.hiccup-test" "--repl"]}
-           :1.7         {:override-deps {org.clojure/clojure {:mvn/version "1.7.0"}}}
-           :1.8         {:override-deps {org.clojure/clojure {:mvn/version "1.8.0"}}}
-           :1.9         {:override-deps {org.clojure/clojure {:mvn/version "1.9.0"}}}
+
            :1.10        {:override-deps {org.clojure/clojure {:mvn/version "1.10.1"}}}
            :1.11        {:override-deps {org.clojure/clojure {:mvn/version "1.11.1"}}}
            :1.12        {:override-deps {org.clojure/clojure {:mvn/version "1.12.0"}}}
