@@ -1,6 +1,6 @@
 * Inview
 
-A library inspired by [[https://github.com/cgrand/enlive][Enlive]] and [[https://github.com/ckirkendall/enfocus][Enfocus]] with fewer macros and based around Hiccup style data structures. It's intended to be usable from Clojure and ClojureScript.
+A library inspired by [[https://github.com/cgrand/enlive][Enlive]] and [[https://github.com/ckirkendall/enfocus][Enfocus]] with fewer macros and based around Hiccup style data structures. It's intended to be usable from Clojure and ClojureScript. Currently an alpha status release.
 
 ** Quick start
 Given an HTML file ~test.html~:
@@ -31,7 +31,7 @@ Given an HTML file ~test.html~:
 
 You can start a REPL with:
 #+begin_src shell :results silent
-  clj -Sdeps '{:deps {io.github.zidicat/inview {:git/sha "f6d9310ec5393febb85e1247ec8ade482304c68e"}}}'
+  clj -Sdeps '{:deps {io.github.zidicat/inview {:git/sha "ed66068d167bf4c239ba5e9e12ad2b5fe22864fc"}}}'
 #+end_src
 You can define a function that will return a hiccup style data structure representing that HTML:
 #+name: Initial Setup
