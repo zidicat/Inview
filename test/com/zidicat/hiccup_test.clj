@@ -5,7 +5,9 @@
             [hiccup.compiler :as hic]
             [taipei-404.html :as parse]
             [hickory.core :as hickory]
-            [clojure.string :as string]))
+            [clojure.string :as string]
+            [com.zidicat.inview.render-p :as render-p])
+  (:import [java.io StringWriter]))
 
 ;; TOOD think about this lib : https://github.com/cjohansen/lookup
 
@@ -25,8 +27,7 @@
     template-conf
   [:.user] (html/content (:name user))
   [:form]  (html/add-class "fish")
-  [:form]  (html/remove-class "ajaxform")
-  #_ (comp html/render vec))
+  [:form]  (html/remove-class "ajaxform"))
 
 (defn parser [f]
   (nth (hickory/as-hiccup (hickory/parse (slurp f))) 2))
@@ -38,8 +39,7 @@
    :inline           true}
   [:.user] (html/content (:name user))
   [:form]  (html/add-class "fish")
-  [:form]  (html/remove-class "ajaxform")
-  #_ hic/render-html)
+  [:form]  (html/remove-class "ajaxform"))
 
 (deftest rendering-and-parsing
   (testing "parsing and rendering"
@@ -50,7 +50,7 @@
         (is (= default alt))
         (is (= (parse/html->hiccup (hic/render-html default)) (parse/html->hiccup (hic/render-html alt))))))))
 
-(deftest tree-duce
+(deftest some-round-trips
   (testing "tree-duce"
     (let [user    {:name "Mr Bob Dabolina"}
           alt     (alternative-logged-in-user user)
@@ -59,110 +59,50 @@
         (is (= default alt)))
       (testing "can render to string"
         (is (= (into [[:!DOCTYPE {:html true}]] (parse/html->hiccup (hic/render-html default)))
-               (-> (render/tree-duce (map identity) (render/render-string-rf) (render/str-render-settings) default)
-                   parse/html->hiccup))))
-      #_ (testing "fake js api"
-        (is (= :test #_ (into ["<!DOCTYPE html>"] default)
-               (render/tree-duce (map identity)
-                                 conj
-                                 {:empty-content []
-                                  :tag-fn (fn [x]
-                                            (if-let [nom (namespace x)]
-                                              (keyword (str "js/document.createElementNS/" nom) (name x))
-                                              (keyword "js/document.createElement" (name x))))
-                                  :empty-attr (fn [tag r rf]
-                                                (let [nss {"svg" "http://www.w3.org/2000/svg"
-                                                           "xhtml" "http://www.w3.org/1999/xhtml"
-                                                           "xlink" "http://www.w3.org/1999/xlink"
-                                                           "rdf" "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-                                                           "cc" "http://creativecommons.org/ns#"
-                                                           "dc" "http://purl.org/dc/elements/1.1/"}]
-                                                  (fn
-                                                    ([] tag)
-                                                    ([t] t)
-                                                    ([el [k v]]     ;TODO read study learn and inwardly digest ... and correct??
-                                                     (cond
-                                                       (qualified-keyword? k)
-                                                       (.setAttributeNS el (get nss (namespace k)) (name k) v)
+               (-> default
+                   render/render-str
+                   parse/html->hiccup)))))))
 
-                                                       (= "on-" (subs (name k) 0 3))
-                                                       ;; Set event handlers directly, rather than through setAttribute
-                                                       (unchecked-set el (string/lower-case (name k)) v)
-
-                                                       (and (= :class k) (sequential? v))
-                                                       (.setAttribute el "class" (string/join " " v))
-
-                                                       (and (= :style k) (map? v))
-                                                       (doseq [[prop val] v]
-                                                         (.setProperty (.-style el) (name prop) val))
-
-                                                       :else
-                                                       (.setAttribute el (name k) v))))))
-                                  :attr-xform (map (fn [x] x))}
-                                 default)))))))
-
-
-
-
-
-
+(deftest tree-duce-p
+  (let [user   {:name "Mr Bob Dabolina"}]
+    (testing "runs in cljs"
+      (let [expected "<!DOCTYPE html><html><head></head><body><div class=\"login\"><form action=\"/api/login\" class=\"fish\" method=\"POST\"><fieldset><label for=\"login-id\">Login:</label><input name=\"login-id\" type=\"text\" /><label for=\"login-password\">Password:</label><input name=\"login-password\" type=\"password\" /><input name=\"login\" type=\"submit\" value=\"Login\" /></fieldset></form></div><div class=\"logout\"><span>Logged in as <span class=\"user\">Mr Bob Dabolina</span></span><form action=\"/api/logout\" class=\"fish\" method=\"POST\"><input name=\"logout\" type=\"submit\" value=\"Logout\" /></form></div></body></html>"]
+        (testing "string-tree-ducer"
+          (is (= expected
+                 (render-p/tree-duce (map identity) (render-p/string-tree-ducer) (default-logged-in-user user)))))
+        (testing "string-writer-tree-ducer"
+          (is (= expected
+                 (render-p/tree-duce (map identity) (render-p/writer-tree-ducer (StringWriter.)) (default-logged-in-user user))))))
+      (testing "noop-tree-ducer"
+        (is (= (default-logged-in-user user)
+               (render-p/tree-duce (map identity) (render-p/->NoopTreeDucer) (default-logged-in-user user))))
+        (is (= #:com.zidicat.inview{:doctype ["html"]}
+               (meta (render-p/tree-duce (map identity) (render-p/->NoopTreeDucer) (default-logged-in-user user)))))))))
 
 (comment
 
-  (default-logged-in-user {:name "Mr Bob Dabolina"})
+  (let [dom [:html {}
+             [:head {}]
+             [:body {}
+              [:div {:class "login"}
+               [:form {:class "fish", :method "POST", :action "/api/login"}
+                [:fieldset {}
+                 [:label {:for "login-id"} "Login:"]
+                 [:input {:type "text", :name "login-id"}]
+                 [:label {:for "login-password"} "Password:"]
+                 [:input {:type "password", :name "login-password"}]
+                 [:input {:type "submit", :name "login", :value "Login"}]]]]
+              [:div {:class "logout"}
+               [:span {} "Logged in as " [:span {:class "user"} "Mr Bob Dabolina"]]
+               [:form {:class "fish", :method "POST", :action "/api/logout"}
+                [:input {:type "submit", :name "logout", :value "Logout"}]]]]]
+        user    {:name "Mr Bob Dabolina"}
+        dom     (alternative-logged-in-user user)]
+    (prn 'render-str)
+    (time (render/render-str dom))
+    (prn 'treeduce-p 'str-concat)
+    (time (render-p/tree-duce (map identity) (render-p/string-tree-ducer) dom))
+    (prn 'treeduce-p 'stringwriter)
+    (time (render-p/tree-duce (map identity) (render-p/writer-tree-ducer (StringWriter.)) dom)))  
 
-  (pop [1 2 3])
-
-  (html/def-view default-snippet [user]
-    (merge template-conf
-           {:file     "test/com/zidicat/inview-test.html"
-            :selector [:.logout]
-            :parser   :default})
-    [:.user] (html/content (:name user))
-    html/render)
-
-  (html/def-view alternative-snippet [user]
-    (merge template-conf
-           {:file             "test/com/zidicat/inview-test.html"
-            :selector         [:.logout]
-            :parser           parser
-            :strip-whitespace false})
-    [:.user] (html/content (:name user))
-    [:form]  (html/add-class "fish")
-    [:form]  (html/remove-class "ajaxform")
-    render-hic)
-
-
-
-  (default-logged-in-user {:name "Mr Bob Dabolina"})
-
-  (let [hic [:html {} [:p {} "test"]]]
-    (hic/compile-html hic))
-
-  (require '[clojure.data :as data])
-  (let [dom [:html {} [:div {:class "login"} [:hr] [:form {:class "fish", :method "POST", :action "/api/login"} [:fieldset {} [:label {:for "login-id"} "Login:"] [:input {:type "text", :name "login-id"}] [:label {:for "login-password"} "Password:"] [:input {:type "password", :name "login-password"}] [:input {:type "submit", :name "login", :value "Login"}]]]] [:div {:class "logout"} [:span {} "Logged in as " [:span {:class "user"} "Mr Bob Dabolina"]] [:form {:class "fish", :method "POST", :action "/api/logout"} [:input {:type "submit", :name "logout", :value "Logout"}]]]]
-        times 5000]
-    (if (= (hic/render-html dom)
-           #_ (render/render dom)
-           (html/render dom)
-           (render/tree-duce (map identity) (render/render-string-rf) (render/str-render-settings) dom)
-           (render/render-str dom))
-      [(prn '-- times '------------------------------------------------------------------------------)
-       (pr 'hiccup '>>) (time (dotimes [x times] (hic/render-html dom)))
-       ;; (pr 'render '>>) (time (dotimes [x times] (render/render dom)))
-       (pr 'html/render '>>) (time (dotimes [x times] (html/render dom)))
-       (pr 'render-str '>>) (time (dotimes [x times] (render/render-str dom)))
-       (pr 'tree-duce '>>) (time (dotimes [x times] (render/tree-duce (map identity) (render/render-string-rf) (render/str-render-settings) dom)))]
-      (map println [(hic/render-html dom) (render/render-str dom)])))
-
-    (let [dom [:html {} [:div {:class "login"} [:form {:class "fish", :method "POST", :action "/api/login"} [:fieldset {} [:label {:for "login-id"} "Login:"] [:input {:type "text", :name "login-id"}] [:label {:for "login-password"} "Password:"] [:input {:type "password", :name "login-password"}] [:input {:type "submit", :name "login", :value "Login"}]]]] [:div {:class "logout"} [:span {} "Logged in as " [:span {:class "user"} "Mr Bob Dabolina"]] [:form {:class "fish", :method "POST", :action "/api/logout"} [:input {:type "submit", :name "logout", :value "Logout"}]]]]]
-      [(hic/render-html dom) (render/render-str dom)])
-
-    "<html><div class=\"login\"><form action=\"/api/login\" class=\"fish\" method=\"POST\"><fieldset><label for=\"login-id\">Login:</label><input name=\"login-id\" type=\"text\" /><label for=\"login-password\">Password:</label><input name=\"login-password\" type=\"password\" /><input name=\"login\" type=\"submit\" value=\"Login\" /></fieldset></form></div><div class=\"logout\"><span>Logged in as <span class=\"user\">Mr Bob Dabolina</span></span><form action=\"/api/logout\" class=\"fish\" method=\"POST\"><input name=\"logout\" type=\"submit\" value=\"Logout\" /></form></div></html>"
-    "<html><div class=\"login\"><form class=\"fish\" method=\"POST\" action=\"/api/login\"><fieldset><label for=\"login-id\">Login:</label><input type=\"text\" name=\"login-id\" /><label for=\"login-password\">Password:</label><input type=\"password\" name=\"login-password\" /><input type=\"submit\" name=\"login\" value=\"Login\" /></fieldset></form></div><div class=\"logout\"><span>Logged in as <span class=\"user\">Mr Bob Dabolina</span></span><form class=\"fish\" method=\"POST\" action=\"/api/logout\"><input type=\"submit\" name=\"logout\" value=\"Logout\" /></form></div></html>"
-
-  
-  
-  (default-snippet {:name "Mr Bob Dabolina"})
-  (alternative-snippet {:name "Mr Bob Dabolina"})
   )

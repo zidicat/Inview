@@ -3,7 +3,8 @@
             [clojure.string :as string]
             [clojure.edn :as edn]
             [com.zidicat.inview :as html #?@(:clj [:refer [def-view]] :cljs [:refer-macros [def-view]])]
-            [com.zidicat.inview.render-as :as render]))
+            [com.zidicat.inview.render-as :as render]
+            [com.zidicat.inview.render-p :as render-p]))
 
 (defn template-conf []
   {:strip-whitespace     true
@@ -99,21 +100,19 @@
       #?(:clj
          (testing "writing to a java writer"
            (is (= "<div><span class=\"user\">User<p>Hello fish</p></span></div>"
-                  (str (render/tree-duce (map (fn [x]
-                                                (if (and (sequential? x) (= :i18n (first x)))
-                                                  ({:hello "Hello"} (second x) "content not found")
-                                                  x)))
-                                         (render/render-writer-rf (java.io.StringWriter.))
-                                         (render/str-render-settings)
-                                         [:div {} [:span {:class "user"} "User" [:p [:i18n :hello] " fish"]]]))))))
+                  (str (render-p/tree-duce (map (fn [x]
+                                                  (if (and (sequential? x) (= :i18n (first x)))
+                                                    ({:hello "Hello"} (second x) "content not found")
+                                                    x)))
+                                           (render-p/string-tree-ducer)
+                                           [:div {} [:span {:class "user"} "User" [:p [:i18n :hello] " fish"]]]))))))
       (testing "transducer application before serialisation"
         (is (= "<div><span class=\"user\">User<p>Hello fish</p></span></div>"
-               (render/tree-duce (map (fn [x]
+               (render-p/tree-duce (map (fn [x]
                                         (if (and (sequential? x) (= :i18n (first x)))
                                           ({:hello "Hello"} (second x) "content not found")
                                           x)))
-                                 (render/render-string-rf)
-                                 (render/str-render-settings)
+                                 (render-p/string-tree-ducer)
                                  [:div {} [:span {:class "user"} "User" [:p [:i18n :hello] " fish"]]]))))
       (testing "render tag with no content"
         (is (= "<div><span class=\"user\">test</span></div>"
@@ -513,7 +512,7 @@ email-cnt = {$cnt ->
                        (apply i18n/format bundle (next x))
                        x)))]
     (->> [:div {} [:span {:class "greeting"} [:p [:i18n :hello]]]]
-         (render/tree-duce xform (render/render-string-rf) (render/str-render-settings))))
+         (render-p/tree-duce xform (render-p/string-tree-ducer))))
   ;; =>
   "<div><span class=\"greeting\"><p>Hello world!</p></span></div>"
   

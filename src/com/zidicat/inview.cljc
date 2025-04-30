@@ -113,7 +113,7 @@
 (defn content
   "Creates transform Set content on matched element."
   [c]
-  (selector/content (constantly c)))
+  (selector/content (if (fn? c) c (constantly c))))
 
 (defn clone-map
   "Creates transfom that repeats matched element with supplied transformation."

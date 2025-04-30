@@ -3,7 +3,8 @@
             [clojure.string :as string]
             [clojure.edn :as edn]
             [com.zidicat.inview :as html :refer-macros [def-view]]
-            [com.zidicat.inview.render-as :as render]))
+            [com.zidicat.inview.render-as :as render]
+            [com.zidicat.inview.render-p :as render-p]))
 
 ;; NOTE: you need to know that cljs starts it's broweser on http://localhost:9000/ for `M-x cider-connect-sibling-cljs`
 
@@ -42,11 +43,15 @@
   (let [user   {:name "Mr Bob Dabolina"}]
     (testing "runs in cljs"
       (is (= "<!DOCTYPE html><html><head></head><body><div class=\"login\"><form action=\"/api/login\" class=\"fish\" method=\"POST\"><fieldset><label for=\"login-id\">Login:</label><input name=\"login-id\" type=\"text\" /><label for=\"login-password\">Password:</label><input name=\"login-password\" type=\"password\" /><input name=\"login\" type=\"submit\" value=\"Login\" /></fieldset></form></div><div class=\"logout\"><span>Logged in as <span class=\"user\">Mr Bob Dabolina</span></span><form action=\"/api/logout\" class=\"fish\" method=\"POST\"><input name=\"logout\" type=\"submit\" value=\"Logout\" /></form></div></body></html>"
-             (render/tree-duce (map identity) (render/string-concat-rf) (example user)))))))
+             (render-p/tree-duce (map identity) (render-p/string-tree-ducer) (example user)))))))
+
+(deftest tree-duce-p
+  (let [user   {:name "Mr Bob Dabolina"}]
+    (testing "runs in cljs"
+      (is (= "<!DOCTYPE html><html><head></head><body><div class=\"login\"><form action=\"/api/login\" class=\"fish\" method=\"POST\"><fieldset><label for=\"login-id\">Login:</label><input name=\"login-id\" type=\"text\" /><label for=\"login-password\">Password:</label><input name=\"login-password\" type=\"password\" /><input name=\"login\" type=\"submit\" value=\"Login\" /></fieldset></form></div><div class=\"logout\"><span>Logged in as <span class=\"user\">Mr Bob Dabolina</span></span><form action=\"/api/logout\" class=\"fish\" method=\"POST\"><input name=\"logout\" type=\"submit\" value=\"Logout\" /></form></div></body></html>"
+             (render-p/tree-duce (map identity) (render-p/string-tree-ducer) (example user)))))))
 
 (comment
-
-
 
   (meta (example {:name "Mr Bob Dabolina"})) ;; => #:com.zidicat.inview{:doctype ["html"]}
 
@@ -59,9 +64,18 @@
   (->> [:div {} [:button {:class ["dog"] :onClick (fn [] (js/alert "here"))} "button"]]
        (render/tree-duce (map identity) (render/js-dom-rf) (render/js-dom-render-settings))
        (.appendChild (js/document.getElementById "app")))
+
+  (do
+    (js/console.clear)
+    (->> [:div {} [:button {:class ["dog"] :onClick (fn [] (js/alert "here"))} "new button"]
+          [:p {} "Fish"]]
+         (render-p/tree-duce (map identity) (render-p/js-dom-tree-ducer))
+         (.appendChild (js/document.getElementById "app"))))
   
 
   (.appendChild (js/document.createElement "div")
                 (js/document.createTextNode "Hello, world"))
+
+  (js/console.log *e)
 
   )
